@@ -1,0 +1,5 @@
+test {
+    if (true) {
+        unreachable;
+    }
+}
