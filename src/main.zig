@@ -4,7 +4,7 @@ const std = @import("std");
 
 const seperator = eolSeparator(80);
 
-const zig_versions: [3][]const u8 = .{ "0.13.0", "0.14.1", "0.15.2" };
+const zig_versions: [4][]const u8 = .{ "0.13.0", "0.14.1", "0.15.2", "0.16.0-dev.1326+2e6f7d36b" };
 
 const SNIPPETS_DIR_NAME = "snippets";
 
@@ -83,6 +83,80 @@ pub fn main() !void {
     // 2.1 unstable sort
     std.debug.print("2.2 Sorting paths by alpha order\n", .{});
     std.sort.pdq([]const u8, snippets_paths.items, {}, stringLessThan);
+
+    // 3. Let's test the tests
+    std.debug.print("3. Let's test our snippets\n", .{});
+    var tests_results: std.ArrayList(u64) = .empty;
+    defer tests_results.deinit(allocator);
+    try tests_results.appendNTimes(allocator, 0, snippets_paths.items.len);
+
+    std.debug.print("3.1 Running the tests\n", .{});
+    for (zig_versions, 0..) |version_name, version_idx| {
+        //
+        std.debug.print("3.1.{d} Testing version {s}\n", .{ version_idx + 1, version_name });
+
+        var zigup_process = std.process.Child.init(&.{ "zigup", version_name }, allocator);
+        zigup_process.stderr_behavior = .Ignore;
+        const zigup_term = try zigup_process.spawnAndWait();
+        switch (zigup_term) {
+            .Exited => |exit_code| {
+                if (exit_code != 0) {
+                    std.debug.print("Something went wrong with zigup\n", .{});
+                    continue;
+                }
+            },
+            else => std.debug.print("Something went wrong with zigup\n", .{}),
+        }
+
+        var processes: std.ArrayList(std.process.Child) = .empty;
+        defer processes.deinit(allocator);
+        for (snippets_paths.items, 0..) |path, snippet_idx| {
+            const snip_path = try std.fmt.allocPrint(allocator, "{s}/{s}", .{ SNIPPETS_DIR_NAME, path });
+            defer allocator.free(snip_path);
+            try processes.append(
+                allocator,
+                std.process.Child.init(&.{ "zig", "test", snip_path }, allocator),
+            );
+            processes.items[snippet_idx].stdout_behavior = .Ignore;
+            processes.items[snippet_idx].stderr_behavior = .Ignore;
+            try processes.items[snippet_idx].spawn();
+        }
+        for (processes.items, 0..) |*process, snip_idx| {
+            const term: std.process.Child.Term = try process.wait();
+            var failed = true;
+            switch (term) {
+                .Exited => |exit_code| {
+                    if (exit_code == 0) {
+                        tests_results.items[snip_idx] |= @as(u64, 1) << @intCast(version_idx);
+                        failed = false;
+                    }
+                },
+                else => {
+                    // idk what happens here
+                    std.debug.print("Unexpected behavior: Term was not .Exited \n", .{});
+                },
+            }
+        }
+    }
+
+    std.debug.print("4. Reporting results\n", .{});
+    for (snippets_paths.items, 0..) |path, snippet_idx| {
+        std.debug.print("4.{d} {s}\n", .{ snippet_idx, path });
+        const res = tests_results.items[snippet_idx];
+        std.debug.print("    Success: ", .{});
+        for (zig_versions, 0..) |version_name, version_idx| {
+            if (res & @as(u64, 1) << @intCast(version_idx) != 0) {
+                std.debug.print("{s} ", .{version_name});
+            }
+        }
+        std.debug.print("\n    Failure: ", .{});
+        for (zig_versions, 0..) |version_name, version_idx| {
+            if (res & @as(u64, 1) << @intCast(version_idx) == 0) {
+                std.debug.print("{s} ", .{version_name});
+            }
+        }
+        std.debug.print("\n", .{});
+    }
 
     return;
     //
