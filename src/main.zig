@@ -1,6 +1,7 @@
 const std = @import("std");
+const is_debug = @import("builtin").mode == .Debug;
 
-// written under 0.16.0-dev.1301+cbfa87cbe
+// written under 0.16.0-dev.1326+2e6f7d36b
 
 const seperator = eolSeparator(80);
 
@@ -27,12 +28,15 @@ fn getAllSnippetsPaths(allocator: std.mem.Allocator) !std.ArrayList([]const u8) 
         if (entry.kind != .file) continue;
 
         // making sure we're dealing with a zig file!
-        if (entry.path < 5 or !std.mem.eql(u8, ".zig", entry.path[entry.path.len-4..]))
+        if (entry.path.len < 5 or !std.mem.eql(u8, ".zig", entry.path[entry.path.len - 4 ..]))
             continue;
 
         const path = try allocator.dupe(u8, entry.path);
         errdefer allocator.free(path);
         try paths.append(allocator, path);
+
+        // WARN: REMOVE THIS
+        if (is_debug) break; // JUST GET THE FIRST PATH AND WE'RE OUT
     }
 
     return paths;
@@ -175,7 +179,7 @@ pub fn main() !void {
     var template_buf: [4096]u8 = undefined;
     const template_file = try std.Io.Dir.cwd().openFile(io, "template.html", .{ .mode = .read_only });
     defer template_file.close(io);
-    const template_reader = template_file.reader(io, &template_buf);
+    var template_reader = template_file.reader(io, &template_buf);
 
     // TODO: AWKWARD MIX of Io and old stuff
     // once https://github.com/ziglang/zig/issues/25738 is done, move to Io
@@ -185,26 +189,68 @@ pub fn main() !void {
     // first deleting it if it exists, probable cause:
     // previous execution failed, need to clean up the mess
     try std.fs.cwd().deleteTree(TMP_OUT_DIR_NAME);
-    const tmp_out_dir = try std.fs.cwd().makeOpenPath(io, TMP_OUT_DIR_NAME, .{});
+    const tmp_out_dir = try std.fs.cwd().makeOpenPath(TMP_OUT_DIR_NAME, .{});
 
-    for (snippets_paths) |path| {
+    for (snippets_paths.items, 0..) |path, snippet_idx| {
         // TODO: alright maybe be a bit careful here about the path names!
         // especially about sperators in the path...
         const new_filename = try std.fmt.allocPrint(allocator, "{s}.html", .{path[0 .. path.len - 4]});
-        const html_file = try tmp_out_dir.createFile(io, new_filename, .{});
+        defer allocator.free(new_filename);
+        const html_file = try tmp_out_dir.createFile(new_filename, .{});
         defer html_file.close();
         var out_buf: [4096]u8 = undefined;
-        const out_writer = html_file.writer(&out_buf);
+        var out_writer = html_file.writer(&out_buf);
 
-        while (template_reader.interface.streamDelimiter(&out_writer.interface, '{')) {
-
-            const next_char = template_reader.interface.peekByte();
-            if (try ) |
+        const res = tests_results.items[snippet_idx];
+        // looking for "template string" looking like "{{NAME}}"
+        while (template_reader.interface.streamDelimiter(&out_writer.interface, '{')) |_| {
+            template_reader.interface.toss(1);
+            const next_char = template_reader.interface.peekByte() catch |err| switch (err) {
+                error.EndOfStream => {
+                    try out_writer.interface.writeByte('{');
+                    break;
+                },
+                else => return err,
+            };
+            if (next_char != '{') {
+                try out_writer.interface.writeByte('{');
+                continue;
+            }
+            // we've seen "{{"
+            template_reader.interface.toss(1);
+            const template_name = try template_reader.interface.takeDelimiterExclusive('}');
+            if (std.mem.eql(u8, "TITLE", template_name)) {
+                try out_writer.interface.print("{s}", .{new_filename});
+            } else if (std.mem.eql(u8, "WORKING_VERSIONS", template_name)) {
+                for (zig_versions, 0..) |version_name, version_idx| {
+                    if (res & @as(u64, 1) << @intCast(version_idx) != 0) {
+                        try out_writer.interface.print("{s} ", .{version_name});
+                    }
+                }
+            } else if (std.mem.eql(u8, "FAILING_VERSIONS", template_name)) {
+                for (zig_versions, 0..) |version_name, version_idx| {
+                    if (res & @as(u64, 1) << @intCast(version_idx) == 0) {
+                        try out_writer.interface.print("{s} ", .{version_name});
+                    }
+                }
+            } else if (std.mem.eql(u8, "CODE", template_name)) {
+                const snip_path = try std.fmt.allocPrint(allocator, "{s}/{s}", .{ SNIPPETS_DIR_NAME, path });
+                defer allocator.free(snip_path);
+                var code_buf: [4096]u8 = undefined;
+                const code_file = try std.Io.Dir.cwd().openFile(io, snip_path, .{ .mode = .read_only });
+                defer code_file.close(io);
+                var code_reader = code_file.reader(io, &code_buf);
+                _ = try out_writer.interface.sendFileAll(&code_reader, .unlimited);
+            }
+            template_reader.interface.toss(2);
+        } else |err| switch (err) {
+            error.EndOfStream => {},
+            else => std.debug.print("\n An error occured, while creating the {s} file: {}\n", .{ new_filename, err }),
         }
-
-
+        try out_writer.interface.flush();
+        try template_reader.seekTo(0);
+        std.debug.print("5.{d} {s} created\n", .{ snippet_idx + 2, new_filename });
     }
-    template_reader.interface.
 
     return;
     //

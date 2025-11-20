@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <title>znippets</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.30.0/themes/prism-tomorrow.min.css" integrity="sha512-vswe+cgvic/XBoF1OcM/TeJ2FW0OofqAVdCZiEYkd6dwGXthvkSFWOoGGJgS2CW70VK5dQM5Oh+7ne47s74VTg==" crossorigin="anonymous" referrerpolicy="no-referrer" />
 <style>
   body {
     margin: 0;
@@ -76,11 +77,11 @@
       padding: 0.5em;
   }
 
-  code {
-    border: unset;
-    overflow: auto;
-    font-family: monospace;
-  }
+  /* code { */
+  /*   border: unset; */
+  /*   overflow: auto; */
+  /*   font-family: monospace; */
+  /* } */
 
   .title {
     text-decoration: underline;
@@ -107,14 +108,14 @@
 
   <div class="versions">
     <div class="good">Working version(s):</div>
-    <div>{{WORKING_VERSION}}</div>
+    <div>{{WORKING_VERSIONS}}</div>
     <br>
     <div class="bad">Failing version(s):</div>
     <div>{{FAILING_VERSIONS}}</div>
   </div>
 
   <h2>Code</h2>
-  <div class="code-container">
+  <div class="code-container language-zig">
     <button class="copy-btn">Copy</button>
     <pre class="pre-code-box"><code id="codeBox">{{CODE}}</code></pre>
   </div>
@@ -131,5 +132,7 @@ document.querySelector(".copy-btn").addEventListener("click", () => {
   });
 });
 </script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.30.0/prism.min.js" integrity="sha512-HiD3V4nv8fcjtouznjT9TqDNDm1EXngV331YGbfVGeKUoH+OLkRTCMzA34ecjlgSQZpdHZupdSrqHY+Hz3l6uQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.30.0/components/prism-zig.min.js" integrity="sha512-5fbERmwxGa5G54RKyUzDxnZsVJl8Xf6gNwpti3AyMULmQL5tsLAoBgRor/Vo2sfTJiuAhicobxDWpef9SmXIkA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 </body>
 </html>
