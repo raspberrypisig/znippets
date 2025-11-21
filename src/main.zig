@@ -36,7 +36,7 @@ fn getAllSnippetsPaths(allocator: std.mem.Allocator) !std.ArrayList([]const u8) 
         try paths.append(allocator, path);
 
         // WARN: REMOVE THIS
-        if (is_debug) break; // JUST GET THE FIRST PATH AND WE'RE OUT
+        //if (is_debug) break; // JUST GET THE FIRST PATH AND WE'RE OUT
     }
 
     return paths;
@@ -208,7 +208,7 @@ pub fn main() !void {
 
         while (streamUntilTemplateStr(&template_reader.interface, &out_writer.interface)) |template_name| {
             if (std.mem.eql(u8, "TITLE", template_name)) {
-                try out_writer.interface.print("{s}", .{new_filename});
+                try out_writer.interface.print("{s}", .{path});
             } else if (std.mem.eql(u8, "WORKING_VERSIONS", template_name)) {
                 for (zig_versions, 0..) |version_name, version_idx| {
                     if (res & @as(u64, 1) << @intCast(version_idx) != 0) {
@@ -356,7 +356,13 @@ const FilenameList = struct {
 
 const TemplatingError = std.Io.Reader.StreamError || std.Io.Reader.DelimiterError || std.Io.Writer.Error || std.Io.File.SeekError;
 
-/// reader is the template reader
+/// Function used to read a HTML template, with some template string like
+/// `{{TITLE}}`. Takes the reader of a template, and writes all the content of
+/// the template until it finds a `{{template_string}}`. Once it finds a `{{`,
+/// it extracts the string and returns it, so that caller can replace it with
+/// whatever...
+/// Returns `error.EndOfStream` once it's done
+/// Should this function actually flush the writer?
 fn streamUntilTemplateStr(reader: *std.Io.Reader, writer: *std.Io.Writer) TemplatingError![]const u8 {
     // looking for "template string" looking like "{{NAME}}"
     while (reader.streamDelimiter(writer, '{')) |_| {
