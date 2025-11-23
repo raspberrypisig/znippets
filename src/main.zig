@@ -1,5 +1,6 @@
 const std = @import("std");
-const is_debug = @import("builtin").mode == .Debug;
+const is_cooking = @import("builtin").mode == .Debug;
+const builtin = @import("builtin");
 
 // written under 0.16.0-dev.1326+2e6f7d36b
 
@@ -15,14 +16,14 @@ fn eolSeparator(comptime size: comptime_int) [size]u8 {
     return @splat('-');
 }
 
-fn getAllSnippetsPaths(allocator: std.mem.Allocator) !std.ArrayList([]const u8) {
+fn getAllSnippetsPaths(gpa: std.mem.Allocator) !std.ArrayList([]const u8) {
     var paths: std.ArrayList([]const u8) = .empty;
-    errdefer paths.deinit(allocator);
+    errdefer paths.deinit(gpa);
 
     var dir = try std.fs.cwd().openDir(SNIPPETS_DIR_NAME, .{ .iterate = true });
     defer dir.close();
 
-    var walker = try dir.walk(allocator);
+    var walker = try dir.walk(gpa);
     defer walker.deinit();
     while (try walker.next()) |entry| {
         if (entry.kind != .file) continue;
@@ -31,22 +32,22 @@ fn getAllSnippetsPaths(allocator: std.mem.Allocator) !std.ArrayList([]const u8) 
         if (entry.path.len < 5 or !std.mem.eql(u8, ".zig", entry.path[entry.path.len - 4 ..]))
             continue;
 
-        const path = try allocator.dupe(u8, entry.path);
-        errdefer allocator.free(path);
-        try paths.append(allocator, path);
+        const path = try gpa.dupe(u8, entry.path);
+        errdefer gpa.free(path);
+        try paths.append(gpa, path);
 
         // WARN: REMOVE THIS
-        //if (is_debug) break; // JUST GET THE FIRST PATH AND WE'RE OUT
+        //if (is_cooking) break; // JUST GET THE FIRST PATH AND WE'RE OUT
     }
 
     return paths;
 }
 
-fn freeSnippetsPath(allocator: std.mem.Allocator, paths: *std.ArrayList([]const u8)) void {
+fn freeSnippetsPath(gpa: std.mem.Allocator, paths: *std.ArrayList([]const u8)) void {
     for (paths.items) |path| {
-        allocator.free(path);
+        gpa.free(path);
     }
-    paths.deinit(allocator);
+    paths.deinit(gpa);
 }
 
 fn stringLessThan(_: void, lhs: []const u8, rhs: []const u8) bool {
@@ -54,9 +55,23 @@ fn stringLessThan(_: void, lhs: []const u8, rhs: []const u8) bool {
 }
 
 pub fn main() !void {
+
+    // 2? allocators
+    // put arena before debug allocator to avoid some false positive leak
+    var arena_allocator = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena_allocator.deinit(); // delete this? let OS clean it at the end?
+    const arena = arena_allocator.allocator();
+
     var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
-    defer _ = debug_allocator.deinit();
-    const allocator = debug_allocator.allocator();
+    const gpa, const is_debug = gpa: {
+        break :gpa switch (builtin.mode) {
+            .Debug, .ReleaseSafe => .{ debug_allocator.allocator(), true },
+            .ReleaseFast, .ReleaseSmall => .{ std.heap.smp_allocator, false },
+        };
+    };
+    defer if (is_debug) {
+        _ = debug_allocator.deinit();
+    };
 
     std.debug.print("ZNIPPETS\n{s}\n", .{seperator});
 
@@ -64,7 +79,7 @@ pub fn main() !void {
     std.debug.print("1. Testing zigup {s}\n", .{eolSeparator(80 - 17)});
     var zigup_existence_proc = std.process.Child.init(
         &.{ "sh", "-c", "command -v zigup" },
-        allocator,
+        gpa,
     );
     zigup_existence_proc.stdout_behavior = .Ignore;
     const zigup_test_existence_res = zigup_existence_proc.spawnAndWait() catch |err| {
@@ -86,8 +101,8 @@ pub fn main() !void {
     // 2. Get list of snippets ------------------------------------------------
     std.debug.print("2. Listing all snippets {s}\n", .{eolSeparator(80 - 24)});
     std.debug.print("2.1 Searching for snippets inside {s} directory\n", .{SNIPPETS_DIR_NAME});
-    var snippets_paths = try getAllSnippetsPaths(allocator);
-    defer freeSnippetsPath(allocator, &snippets_paths);
+    var snippets_paths = try getAllSnippetsPaths(gpa);
+    defer freeSnippetsPath(gpa, &snippets_paths);
     std.debug.print("    {d} snippets found.\n", .{snippets_paths.items.len});
 
     // 2.1 unstable sort
@@ -97,15 +112,14 @@ pub fn main() !void {
     // 3. Let's test the tests ------------------------------------------------
     std.debug.print("3. Let's test our snippets {s}\n", .{eolSeparator(80 - 27)});
     var tests_results: std.ArrayList(u64) = .empty;
-    defer tests_results.deinit(allocator);
-    try tests_results.appendNTimes(allocator, 0, snippets_paths.items.len);
+    try tests_results.appendNTimes(arena, 0, snippets_paths.items.len);
 
     std.debug.print("3.1 Running the tests\n", .{});
     for (zig_versions, 0..) |version_name, version_idx| {
         //
         std.debug.print("3.1.{d} Testing version {s}\n", .{ version_idx + 1, version_name });
 
-        var zigup_process = std.process.Child.init(&.{ "zigup", version_name }, allocator);
+        var zigup_process = std.process.Child.init(&.{ "zigup", version_name }, gpa);
         zigup_process.stderr_behavior = .Ignore;
         const zigup_term = try zigup_process.spawnAndWait();
         switch (zigup_term) {
@@ -119,13 +133,13 @@ pub fn main() !void {
         }
 
         var processes: std.ArrayList(std.process.Child) = .empty;
-        defer processes.deinit(allocator);
+        defer processes.deinit(gpa);
         for (snippets_paths.items, 0..) |path, snippet_idx| {
-            const snip_path = try std.fmt.allocPrint(allocator, "{s}/{s}", .{ SNIPPETS_DIR_NAME, path });
-            defer allocator.free(snip_path);
+            const snip_path = try std.fmt.allocPrint(gpa, "{s}/{s}", .{ SNIPPETS_DIR_NAME, path });
+            defer gpa.free(snip_path);
             try processes.append(
-                allocator,
-                std.process.Child.init(&.{ "zig", "test", snip_path }, allocator),
+                gpa,
+                std.process.Child.init(&.{ "zig", "test", snip_path }, gpa),
             );
             processes.items[snippet_idx].stdout_behavior = .Ignore;
             processes.items[snippet_idx].stderr_behavior = .Ignore;
@@ -174,9 +188,8 @@ pub fn main() !void {
 
     // let's store the filenames to be able to reuse them
     var html_filenames = FilenameList.init;
-    defer html_filenames.deinit(allocator);
 
-    var threaded: std.Io.Threaded = .init(allocator);
+    var threaded: std.Io.Threaded = .init(gpa);
     defer threaded.deinit();
     const io = threaded.io();
 
@@ -198,7 +211,7 @@ pub fn main() !void {
     for (snippets_paths.items, 0..) |path, snippet_idx| {
         // TODO: alright maybe be a bit careful here about the path names!
         // especially about sperators in the path...
-        const new_filename = try html_filenames.allocPrintAppend(allocator, "{s}.html", .{path[0 .. path.len - 4]});
+        const new_filename = try html_filenames.allocPrintAppend(arena, "{s}.html", .{path[0 .. path.len - 4]});
         const html_file = try tmp_out_dir.createFile(new_filename, .{});
         defer html_file.close();
         var out_buf: [4096]u8 = undefined;
@@ -222,8 +235,8 @@ pub fn main() !void {
                     }
                 }
             } else if (std.mem.eql(u8, "CODE", template_name)) {
-                const snip_path = try std.fmt.allocPrint(allocator, "{s}/{s}", .{ SNIPPETS_DIR_NAME, path });
-                defer allocator.free(snip_path);
+                const snip_path = try std.fmt.allocPrint(gpa, "{s}/{s}", .{ SNIPPETS_DIR_NAME, path });
+                defer gpa.free(snip_path);
                 var code_buf: [4096]u8 = undefined;
                 const code_file = try std.Io.Dir.cwd().openFile(io, snip_path, .{ .mode = .read_only });
                 defer code_file.close(io);
@@ -246,7 +259,7 @@ pub fn main() !void {
     var v_template_reader = v_template_file.reader(io, &template_buf);
     const snippet_html_file_total_count = html_filenames.list.items.len;
     for (zig_versions, 0..) |version, version_idx| {
-        const new_filename = try html_filenames.allocPrintAppend(allocator, "v{s}.html", .{version});
+        const new_filename = try html_filenames.allocPrintAppend(arena, "v{s}.html", .{version});
         const html_file = try tmp_out_dir.createFile(new_filename, .{});
         defer html_file.close();
         var out_buf: [4096]u8 = undefined;
@@ -317,7 +330,7 @@ pub fn main() !void {
     // for (zig_versions, 0..) |version, idx| {
     //     var buf: [100]u8 = undefined;
     //     const msg = try std.fmt.bufPrint(&buf, "'Hello world, version: {s}'", .{version});
-    //     processes[idx] = std.process.Child.init(&.{ "echo", msg }, allocator);
+    //     processes[idx] = std.process.Child.init(&.{ "echo", msg }, gpa);
     //     try processes[idx].spawn();
     // }
     //
@@ -331,9 +344,9 @@ const FilenameList = struct {
 
     const Self = @This();
 
-    pub fn allocPrintAppend(self: *Self, gpa: std.mem.Allocator, comptime fmt: []const u8, args: anytype) ![]u8 {
-        const formatted = try std.fmt.allocPrint(gpa, fmt, args);
-        try self.list.append(gpa, formatted);
+    pub fn allocPrintAppend(self: *Self, arena: std.mem.Allocator, comptime fmt: []const u8, args: anytype) ![]u8 {
+        const formatted = try std.fmt.allocPrint(arena, fmt, args);
+        try self.list.append(arena, formatted);
         return formatted;
     }
 
@@ -345,13 +358,6 @@ const FilenameList = struct {
     const init = Self{
         .list = .empty,
     };
-
-    pub fn deinit(self: *Self, gpa: std.mem.Allocator) void {
-        for (self.list.items) |filename| {
-            gpa.free(filename);
-        }
-        self.list.deinit(gpa);
-    }
 };
 
 const TemplatingError = std.Io.Reader.StreamError || std.Io.Reader.DelimiterError || std.Io.Writer.Error || std.Io.File.SeekError;
