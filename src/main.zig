@@ -398,7 +398,7 @@ pub fn main() !void {
     var html_filenames = FilenameList.init;
 
     var template_buf: [4096]u8 = undefined;
-    const template_file = try std.Io.Dir.cwd().openFile(io, "template.html", .{ .mode = .read_only });
+    const template_file = try std.Io.Dir.cwd().openFile(io, "html-templates/template.html", .{ .mode = .read_only });
     defer template_file.close(io);
     var template_reader = template_file.reader(io, &template_buf);
 
@@ -457,7 +457,7 @@ pub fn main() !void {
     std.debug.print("7. Jenna raiding html files for each version {s}\n", .{eolSeparator(80 - 45)});
     std.debug.print("7.1 Opening version-template.html\n", .{});
 
-    const v_template_file = try std.Io.Dir.cwd().openFile(io, "version-template.html", .{ .mode = .read_only });
+    const v_template_file = try std.Io.Dir.cwd().openFile(io, "html-templates/version-template.html", .{ .mode = .read_only });
     defer v_template_file.close(io);
     // let's reuse the same buffer!
     var v_template_reader = v_template_file.reader(io, &template_buf);
@@ -499,7 +499,7 @@ pub fn main() !void {
 
     std.debug.print("8. Jenna raiding index.html {s}\n", .{eolSeparator(80 - 28)});
 
-    const index_template_file = try std.Io.Dir.cwd().openFile(io, "index-template.html", .{ .mode = .read_only });
+    const index_template_file = try std.Io.Dir.cwd().openFile(io, "html-templates/index-template.html", .{ .mode = .read_only });
     defer index_template_file.close(io);
     // let's reuse the same buffer!
     var index_template_reader = index_template_file.reader(io, &template_buf);
@@ -529,6 +529,14 @@ pub fn main() !void {
 
     std.debug.print("9. Minify html files {s}\n", .{eolSeparator(80 - 21)});
     minifyGeneratedFiles(gpa);
+
+    std.debug.print("10. Publishing web pages {s}\n", .{eolSeparator(80 - 25)});
+    std.debug.print("10.1 Delete docs/\n", .{});
+    try std.fs.cwd().deleteTree("docs");
+    std.debug.print("10.1 Rename tmp-out to docs/\n", .{});
+    try std.fs.cwd().rename("tmp-out", "docs");
+    std.debug.print("10.2 Copy style.css\n", .{});
+    try std.fs.Dir.copyFile(std.fs.cwd(), "html-templates/style.css", std.fs.cwd(), "docs/style.css", .{});
 
     return;
     //
