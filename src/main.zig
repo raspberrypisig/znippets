@@ -429,13 +429,13 @@ pub fn main() !void {
             } else if (std.mem.eql(u8, "WORKING_VERSIONS", template_name)) {
                 for (zig_versions.items, 0..) |version_name, version_idx| {
                     if (res & @as(u64, 1) << @intCast(version_idx) != 0) {
-                        try out_writer.interface.print("{s} ", .{version_name});
+                        try out_writer.interface.print("<a class=\"version-link\" href=\"v{s}.html\">{s}</a> ", .{ version_name, version_name });
                     }
                 }
             } else if (std.mem.eql(u8, "FAILING_VERSIONS", template_name)) {
                 for (zig_versions.items, 0..) |version_name, version_idx| {
                     if (res & @as(u64, 1) << @intCast(version_idx) == 0) {
-                        try out_writer.interface.print("{s} ", .{version_name});
+                        try out_writer.interface.print("<a class=\"version-link\" href=\"v{s}.html\">{s}</a> ", .{ version_name, version_name });
                     }
                 }
             } else if (std.mem.eql(u8, "CODE", template_name)) {
@@ -520,15 +520,14 @@ pub fn main() !void {
                 const version_html_filename = html_filenames.at(idx);
                 try out_writer.interface.print("<a href=\"{s}\">{s}</a><br>", .{ version_html_filename, version_name });
             }
+        } else if (std.mem.eql(u8, "FOOTER", template_str)) {
+            writeDateTime(io, &out_writer.interface);
         }
     } else |err| switch (err) {
         error.EndOfStream => {},
         else => std.debug.print("\n An error occured, while creating the index.html file: {}\n", .{err}),
     }
     try out_writer.interface.flush();
-
-    std.debug.print("9. Minify html files {s}\n", .{eolSeparator(80 - 21)});
-    minifyGeneratedFiles(gpa);
 
     std.debug.print("10. Publishing web pages {s}\n", .{eolSeparator(80 - 25)});
     std.debug.print("10.1 Delete docs/\n", .{});
@@ -537,6 +536,9 @@ pub fn main() !void {
     try std.fs.cwd().rename("tmp-out", "docs");
     std.debug.print("10.2 Copy style.css\n", .{});
     try std.fs.Dir.copyFile(std.fs.cwd(), "html-templates/style.css", std.fs.cwd(), "docs/style.css", .{});
+
+    std.debug.print("9. Minify html files {s}\n", .{eolSeparator(80 - 21)});
+    minifyGeneratedFiles(gpa, "docs/");
 
     return;
     //
@@ -685,8 +687,8 @@ fn sortPathAndResBecauseImStupidAndMultiArraylistWouldProbablyBeBetterButIjustWa
     std.sort.pdqContext(0, res.items.len, ctx);
 }
 
-fn minifyGeneratedFiles(gpa: std.mem.Allocator) void {
-    const command = std.fmt.allocPrint(gpa, "minhtml {s}/* --minify-css --minify-js --keep-closing-tags", .{TMP_OUT_DIR_NAME}) catch |err| {
+fn minifyGeneratedFiles(gpa: std.mem.Allocator, dir_path: []const u8) void {
+    const command = std.fmt.allocPrint(gpa, "minhtml {s}/* --minify-css --minify-js --keep-closing-tags", .{dir_path}) catch |err| {
         std.debug.print("Minifying failed: couldn't generate the command, {}\n", .{err});
         return;
     };
@@ -706,4 +708,29 @@ fn minifyGeneratedFiles(gpa: std.mem.Allocator) void {
     } else {
         std.debug.print("Something went wrong with minimization!\n", .{});
     }
+}
+
+pub fn writeDateTime(io: std.Io, writer: *std.Io.Writer) void {
+    const clock = std.Io.Clock.real;
+    const timestamp = std.Io.Clock.now(clock, io) catch {
+        std.debug.print("Couldn't acquire the current timestamp\n", .{});
+        return;
+    };
+
+    const secs: u64 = @intCast(timestamp.toSeconds());
+    const epoch_seconds = std.time.epoch.EpochSeconds{ .secs = secs };
+    const day_seconds = epoch_seconds.getDaySeconds();
+    const epoch_day = epoch_seconds.getEpochDay();
+    const year_day = epoch_day.calculateYearDay();
+    const month_day = year_day.calculateMonthDay();
+    const year = year_day.year;
+    const month = month_day.month.numeric();
+    const day = month_day.day_index + 1;
+    const hour = day_seconds.getHoursIntoDay();
+    const minutes = day_seconds.getMinutesIntoHour();
+    const seconds = day_seconds.getSecondsIntoMinute();
+
+    writer.print("{d:0>4}-{d:0>2}-{d:0>2}T{d:0>2}:{d:0>2}:{d:0>2}Z\n", .{ year, month, day, hour, minutes, seconds }) catch {
+        std.debug.print("couldn't write DateTime inside writer\n", .{});
+    };
 }
