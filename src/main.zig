@@ -138,6 +138,7 @@ pub fn main() !void {
     // (it's not that it's hard, but I don't really want to change anything right meow)
     std.mem.reverse([]const u8, all_versions.items);
 
+    var previousMaster: ?[]const u8 = null;
     // TODO:
     // - clean things up
     //  - organize thoughts/summarize in "readme"
@@ -210,7 +211,7 @@ pub fn main() !void {
         // if masters are different there is at least one new version to test
         // what if there's a new release but not a new master, would that be possible?
         std.debug.print("DEBUG zig_versions master not matching local master\n", .{});
-        arena.free(zig_versions.pop().?); // pop old master, freeing probably does nothing here
+        previousMaster = zig_versions.pop().?; // pop old master
         new_version_idx -= 1;
         var i: usize = 1;
         // search for the last (newest) corresponding version
@@ -228,8 +229,6 @@ pub fn main() !void {
     for (zig_versions.items) |ver| {
         std.debug.print("{s}\n", .{ver});
     }
-
-    // TODO: free all_versions
 
     // 2. Get list of snippets ------------------------------------------------
     std.debug.print("2. Getting all snippets {s}\n", .{eolSeparator(80 - 24)});
@@ -529,16 +528,33 @@ pub fn main() !void {
     }
     try out_writer.interface.flush();
 
-    std.debug.print("10. Publishing web pages {s}\n", .{eolSeparator(80 - 25)});
-    std.debug.print("10.1 Delete docs/\n", .{});
+    std.debug.print("9. Publishing web pages {s}\n", .{eolSeparator(80 - 25)});
+    std.debug.print("9.1 Delete docs/\n", .{});
     try std.fs.cwd().deleteTree("docs");
-    std.debug.print("10.1 Rename tmp-out to docs/\n", .{});
+    std.debug.print("9.2 Rename tmp-out to docs/\n", .{});
     try std.fs.cwd().rename("tmp-out", "docs");
-    std.debug.print("10.2 Copy style.css\n", .{});
+    std.debug.print("9.3 Copy style.css\n", .{});
     try std.fs.Dir.copyFile(std.fs.cwd(), "html-templates/style.css", std.fs.cwd(), "docs/style.css", .{});
 
-    std.debug.print("9. Minify html files {s}\n", .{eolSeparator(80 - 21)});
+    std.debug.print("10. Minify html files {s}\n", .{eolSeparator(80 - 21)});
     minifyGeneratedFiles(gpa, "docs/");
+
+    // deleting previous installed master version to minimize storage
+    if (previousMaster) |prevMaster| {
+        std.debug.print("10. deleting previous master {s}\n", .{eolSeparator(80 - 29)});
+        var zigup_process = std.process.Child.init(&.{ "zigup", "clean", prevMaster }, gpa);
+        // TODO: uncomment below
+        // zigup_process.stderr_behavior = .Ignore;
+        const zigup_term = try zigup_process.spawnAndWait();
+        switch (zigup_term) {
+            .Exited => |exit_code| {
+                if (exit_code != 0) {
+                    std.debug.print("Something went wrong with zigup clean\n", .{});
+                }
+            },
+            else => std.debug.print("Something went wrong with zigup clean\n", .{}),
+        }
+    }
 
     return;
     //
