@@ -24,7 +24,6 @@ pub fn fetchZigVersions(gpa: std.mem.Allocator, arena: std.mem.Allocator, io: st
     if (response.status != .ok) {
         return error.FetchingError;
     }
-    std.debug.print("{s}\n", .{res_body.written()});
 
     const parsed = try std.json.parseFromSlice(std.json.Value, gpa, res_body.written(), .{});
     defer parsed.deinit();
