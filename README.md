@@ -40,6 +40,8 @@ OR open a PR with the snippet ready.
   (maybe this can be relaxed, need to think about it)
   (if not in a test, what happens? still compiles?)
 - avoid side effects (like deleting the whole system 😭)
+- No license, if you expect people to copy a license to use your code snippets
+  don't share it, only public domain stuff anybody can use
 
 If you want to add an explanation or some extra data, just write a comment at
 the top!!!
@@ -212,6 +214,19 @@ want in the `Writer`
 
 Syntax highlighting done by prism.js
 
+## License and stuff
+
+The goal is to share useful snippets anyone can use, all of the code snippets
+are free to use, no license, no copyright, no nothing, public domain, idk, if
+you really want a license, maybe [CC0 1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/)
+or [MIT-O](https://opensource.org/license/mit-0).
+
+If you think you own one of the snippets, you can fill an issue, and I will
+remove it! But really?
+
+The rest of the code is under the [MIT License](https://github.com/ComputerBread/znippets/blob/master/LICENSE),
+truth is I don't really care, but if you make money with it somehow, don't be a
+rat, [give some back](https://www.youtube.com/watch?v=GIa_3TBP2_o)
 
 ## Automatic "build"
 
