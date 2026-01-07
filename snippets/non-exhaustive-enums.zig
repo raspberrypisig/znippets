@@ -10,7 +10,7 @@ test "non-exhaustive enum" {
         unauthorized = 401,
         not_found = 404,
         internal_server_error = 500,
-        _, // <-- trailing underscore
+        _, // trailing underscore
     };
 
     std.debug.print("200: {}, other: {}\n", .{ @as(Status, @enumFromInt(200)), @as(Status, @enumFromInt(2)) });
@@ -34,7 +34,7 @@ test "toString" {
         unauthorized = 401,
         not_found = 404,
         internal_server_error = 500,
-        _, // <-- trailing underscore
+        _, // trailing underscore
 
         pub fn toString(self: @This()) []const u8 {
             return switch (self) {
@@ -61,7 +61,7 @@ test "toString, _ and else" {
         unauthorized = 401,
         not_found = 404,
         internal_server_error = 500,
-        _, // <-- trailing underscore
+        _, // trailing underscore
 
         pub fn toString(self: @This()) []const u8 {
             return switch (self) {
@@ -86,7 +86,7 @@ test "toString, mixing _ and named tag" {
         unauthorized = 401,
         not_found = 404,
         internal_server_error = 500,
-        _, // <-- trailing underscore
+        _, // trailing underscore
 
         pub fn toString(self: @This()) []const u8 {
             return switch (self) {
