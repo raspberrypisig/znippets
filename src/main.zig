@@ -480,7 +480,6 @@ pub fn main() !void {
                 try chg_writer.interface.print("{s}", .{zig_versions.items[changes_idx - 1]});
             } else if (std.mem.eql(u8, "STILL_FAILING_SNIPPETS", template_str)) {
                 for (tests_results.items, 0..) |res, snippet_idx| {
-                    std.log.debug("res: {b} still failing {}", .{ res, (res & @as(u64, 1) << @as(u6, @intCast(changes_idx))) == 0 and (res & @as(u64, 1) << @as(u6, @intCast(changes_idx)) - 1) == 0 });
                     if ((res & @as(u64, 1) << @as(u6, @intCast(changes_idx))) == 0 and (res & @as(u64, 1) << @as(u6, @intCast(changes_idx)) - 1) == 0) {
                         const snippet_html_file = html_filenames.at(snippet_idx);
                         const snippet_name = snippets_paths.items[snippet_idx];
