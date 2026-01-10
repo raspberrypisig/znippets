@@ -459,7 +459,68 @@ pub fn main() !void {
         try v_template_reader.seekTo(0);
     }
 
-    std.log.debug("8. Jenna raiding index.html {s}", .{eolSeparator(80 - 28)});
+    //-------------------------------------------------------------------------
+    // PREV_VERSION, VERSION, STILL_FAILING_SNIPPETS, STILL_WORKING_SNIPPETS, NEW_FAILING_SNIPPETS, NEW_WORKING_SNIPPETS
+    std.log.debug("8. Generating version changes html files {s}", .{eolSeparator(80 - 41)});
+    const changes_template_file = try std.Io.Dir.cwd().openFile(io, "html-templates/changes-template.html", .{ .mode = .read_only });
+    defer changes_template_file.close(io);
+    var changes_template_reader = changes_template_file.reader(io, &template_buf);
+    var changes_idx: usize = 1;
+    while (changes_idx < zig_versions.items.len) : (changes_idx += 1) {
+        const filename = try html_filenames.allocPrintAppend(arena, "{s}_to_{s}.html", .{ zig_versions.items[changes_idx - 1], zig_versions.items[changes_idx] });
+        const changes_file = try tmp_out_dir.createFile(filename, .{});
+        defer changes_file.close();
+        var chg_buf: [4096]u8 = undefined;
+        var chg_writer = changes_file.writer(&chg_buf);
+
+        while (file_generation.streamUntilTemplateStr(&changes_template_reader.interface, &chg_writer.interface)) |template_str| {
+            if (std.mem.eql(u8, "VERSION", template_str)) {
+                try chg_writer.interface.print("{s}", .{zig_versions.items[changes_idx]});
+            } else if (std.mem.eql(u8, "PREV_VERSION", template_str)) {
+                try chg_writer.interface.print("{s}", .{zig_versions.items[changes_idx - 1]});
+            } else if (std.mem.eql(u8, "STILL_FAILING_SNIPPETS", template_str)) {
+                for (tests_results.items, 0..) |res, snippet_idx| {
+                    std.log.debug("res: {b} still failing {}", .{ res, (res & @as(u64, 1) << @as(u6, @intCast(changes_idx))) == 0 and (res & @as(u64, 1) << @as(u6, @intCast(changes_idx)) - 1) == 0 });
+                    if ((res & @as(u64, 1) << @as(u6, @intCast(changes_idx))) == 0 and (res & @as(u64, 1) << @as(u6, @intCast(changes_idx)) - 1) == 0) {
+                        const snippet_html_file = html_filenames.at(snippet_idx);
+                        const snippet_name = snippets_paths.items[snippet_idx];
+                        try chg_writer.interface.print("<a href=\"{s}\">{s}</a><br>", .{ snippet_html_file, snippet_name });
+                    }
+                }
+            } else if (std.mem.eql(u8, "STILL_WORKING_SNIPPETS", template_str)) {
+                for (tests_results.items, 0..) |res, snippet_idx| {
+                    if ((res & @as(u64, 1) << @as(u6, @intCast(changes_idx))) != 0 and (res & @as(u64, 1) << @as(u6, @intCast(changes_idx)) - 1) != 0) {
+                        const snippet_html_file = html_filenames.at(snippet_idx);
+                        const snippet_name = snippets_paths.items[snippet_idx];
+                        try chg_writer.interface.print("<a href=\"{s}\">{s}</a><br>", .{ snippet_html_file, snippet_name });
+                    }
+                }
+            } else if (std.mem.eql(u8, "NEW_FAILING_SNIPPETS", template_str)) {
+                for (tests_results.items, 0..) |res, snippet_idx| {
+                    if ((res & @as(u64, 1) << @as(u6, @intCast(changes_idx))) == 0 and (res & @as(u64, 1) << @as(u6, @intCast(changes_idx)) - 1) != 0) {
+                        const snippet_html_file = html_filenames.at(snippet_idx);
+                        const snippet_name = snippets_paths.items[snippet_idx];
+                        try chg_writer.interface.print("<a href=\"{s}\">{s}</a><br>", .{ snippet_html_file, snippet_name });
+                    }
+                }
+            } else if (std.mem.eql(u8, "NEW_WORKING_SNIPPETS", template_str)) {
+                for (tests_results.items, 0..) |res, snippet_idx| {
+                    if ((res & @as(u64, 1) << @as(u6, @intCast(changes_idx))) != 0 and (res & @as(u64, 1) << @as(u6, @intCast(changes_idx)) - 1) == 0) {
+                        const snippet_html_file = html_filenames.at(snippet_idx);
+                        const snippet_name = snippets_paths.items[snippet_idx];
+                        try chg_writer.interface.print("<a href=\"{s}\">{s}</a><br>", .{ snippet_html_file, snippet_name });
+                    }
+                }
+            }
+        } else |err| switch (err) {
+            error.EndOfStream => {},
+            else => std.log.err("\n An error occured, while creating the index.html file: {}", .{err}),
+        }
+        try changes_template_reader.seekTo(0);
+        try chg_writer.interface.flush();
+    }
+
+    std.log.debug("9. Jenna raiding index.html {s}", .{eolSeparator(80 - 28)});
 
     const index_template_file = try std.Io.Dir.cwd().openFile(io, "html-templates/index-template.html", .{ .mode = .read_only });
     defer index_template_file.close(io);
@@ -470,6 +531,7 @@ pub fn main() !void {
     defer index_html.close();
     var out_buf: [4096]u8 = undefined;
     var out_writer = index_html.writer(&out_buf);
+    const last_version_file = snippet_html_file_total_count + zig_versions.items.len;
     while (file_generation.streamUntilTemplateStr(&index_template_reader.interface, &out_writer.interface)) |template_str| {
         if (std.mem.eql(u8, "SNIPPETS", template_str)) {
             for (0..snippet_html_file_total_count) |snippet_idx| {
@@ -478,9 +540,14 @@ pub fn main() !void {
                 try out_writer.interface.print("<a href=\"{s}\">{s}</a><br>", .{ snippet_html_file, snippet_name });
             }
         } else if (std.mem.eql(u8, "VERSIONS", template_str)) {
-            for (snippet_html_file_total_count.., zig_versions.items) |idx, version_name| {
+            for (snippet_html_file_total_count..last_version_file, zig_versions.items) |idx, version_name| {
                 const version_html_filename = html_filenames.at(idx);
                 try out_writer.interface.print("<a href=\"{s}\">{s}</a><br>", .{ version_html_filename, version_name });
+            }
+        } else if (std.mem.eql(u8, "CHANGES", template_str)) {
+            for (last_version_file..html_filenames.list.items.len) |idx| {
+                const version_html_filename = html_filenames.at(idx);
+                try out_writer.interface.print("<a href=\"{s}\">{s}</a><br>", .{ version_html_filename, version_html_filename });
             }
         } else if (std.mem.eql(u8, "FOOTER", template_str)) {
             file_generation.writeDateTime(io, &out_writer.interface);
@@ -491,20 +558,20 @@ pub fn main() !void {
     }
     try out_writer.interface.flush();
 
-    std.log.debug("9. Publishing web pages {s}", .{eolSeparator(80 - 25)});
-    std.log.debug("9.1 Delete docs/", .{});
+    std.log.debug("10. Publishing web pages {s}", .{eolSeparator(80 - 26)});
+    std.log.debug("10.1 Delete docs/", .{});
     try std.fs.cwd().deleteTree("docs");
-    std.log.debug("9.2 Rename tmp-out to docs/", .{});
+    std.log.debug("10.2 Rename tmp-out to docs/", .{});
     try std.fs.cwd().rename("tmp-out", "docs");
-    std.log.debug("9.3 Copy style.css", .{});
+    std.log.debug("10.3 Copy style.css", .{});
     try std.fs.Dir.copyFile(std.fs.cwd(), "html-templates/style.css", std.fs.cwd(), "docs/style.css", .{});
 
-    std.log.debug("10. Minify html files {s}", .{eolSeparator(80 - 21)});
+    std.log.debug("11. Minify html files {s}", .{eolSeparator(80 - 21)});
     file_generation.minifyGeneratedFiles(gpa, "docs/");
 
     // deleting previous installed master version to minimize storage
     if (previousMaster) |prevMaster| {
-        std.log.debug("11. deleting previous master {s}", .{eolSeparator(80 - 29)});
+        std.log.debug("12. deleting previous master {s}", .{eolSeparator(80 - 29)});
         var zigup_process = std.process.Child.init(&.{ "zigup", "clean", prevMaster }, gpa);
         zigup_process.stderr_behavior = .Ignore;
         const zigup_term = try zigup_process.spawnAndWait();
@@ -518,7 +585,7 @@ pub fn main() !void {
         }
     }
 
-    std.log.debug("12. commit and push {s}", .{eolSeparator(80 - 20)});
+    std.log.debug("13. commit and push {s}", .{eolSeparator(80 - 20)});
     if (!is_debug) {
         gitCommitPush(gpa);
     }

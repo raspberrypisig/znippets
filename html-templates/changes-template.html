@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>znippets</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+<div class="container">
+
+  <div class="menu"><a href="index.html">Index</a></div>
+
+  <h1 class="title">Changes from {{PREV_VERSION}} to {{VERSION}}</h1>
+
+  <div class="versions">
+
+    <div class="bad">New failing snippets:</div>
+    <div class="description">Breaking changes: Snippets that were working before, but are now failing!</div>
+    <br>
+    <div>{{NEW_FAILING_SNIPPETS}}</div>
+    <br>
+    <div class="good">New working snippets:</div>
+    <div class="description">Breaking changes: Snippets that were failing before, but are now working! (Probably just new feature introduced in this version)</div>
+    <br>
+    <div>{{NEW_WORKING_SNIPPETS}}</div>
+    <br>
+
+    <h2>What didn't change</h2>
+    <div class="good">Still working snippets:</div>
+    <div>{{STILL_WORKING_SNIPPETS}}</div>
+    <br>
+    <div class="bad">Still failing snippets:</div>
+    <div>{{STILL_FAILING_SNIPPETS}}</div>
+  </div>
+
+</div>
+</body>
+</html>
